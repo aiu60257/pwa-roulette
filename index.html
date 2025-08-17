@@ -4,131 +4,165 @@
   <meta charset="UTF-8">
   <title>インチキルーレット</title>
   <style>
-    body { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-    canvas { border: 2px solid #333; border-radius: 50%; }
-    #spinBtn { margin-top: 20px; padding: 10px 20px; font-size: 18px; }
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #f0f0f0;
+    }
+    canvas {
+      margin-top: 20px;
+      background: white;
+      border-radius: 50%;
+    }
+    #indicator {
+      position: absolute;
+      top: 120px; /* ▼を円の外に設置 */
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 32px;
+      color: black;
+    }
+    #controls {
+      margin: 20px;
+      background: #fff;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.2);
+    }
+    input, button, textarea {
+      margin: 5px;
+    }
+    textarea {
+      width: 300px;
+      height: 100px;
+    }
   </style>
 </head>
 <body>
-  <canvas id="wheelCanvas" width="500" height="500"></canvas>
-  <button id="spinBtn">回す！</button>
+  <h1>インチキルーレット</h1>
+  <div id="controls">
+    <p>JSON形式で設定してください</p>
+    <textarea id="configInput">[
+  {"label":"大吉","weight":1,"prob":0.1},
+  {"label":"中吉","weight":1,"prob":0.3},
+  {"label":"小吉","weight":1,"prob":0.5},
+  {"label":"凶","weight":1,"prob":0.1}
+]</textarea><br>
+    <button onclick="applyConfig()">設定を反映</button>
+    <button onclick="spin()">回す！</button>
+  </div>
+
+  <div id="indicator">▼</div>
+  <canvas id="wheelCanvas" width="400" height="400"></canvas>
 
   <script>
     const canvas = document.getElementById("wheelCanvas");
     const ctx = canvas.getContext("2d");
-    const spinBtn = document.getElementById("spinBtn");
-    const size = canvas.width;
-    const center = size / 2;
+    let segments = [];
+    let currentAngle = 0;
+    let spinning = false;
 
-    // ======================
-    // ルーレットの設定
-    // ======================
-    const segments = [
-      { label: "A賞", color: "#ff9999", weight: 0.1 }, // weight = 当選確率
-      { label: "B賞", color: "#99ccff", weight: 0.2 },
-      { label: "C賞", color: "#99ff99", weight: 0.5 },
-      { label: "ハズレ", color: "#cccccc", weight: 0.2 }
-    ];
-    let totalWeight = segments.reduce((s, seg) => s + seg.weight, 0);
+    // 初期設定
+    function applyConfig() {
+      try {
+        segments = JSON.parse(document.getElementById("configInput").value);
+        drawWheel();
+      } catch (e) {
+        alert("設定が不正です");
+      }
+    }
 
-    let angle = 0; // 現在の角度
-
-    // ======================
-    // ルーレット描画
-    // ======================
     function drawWheel() {
-      const arc = 2 * Math.PI / segments.length;
-      ctx.clearRect(0, 0, size, size);
+      const totalWeight = segments.reduce((a, s) => a + s.weight, 0);
+      let startAngle = 0;
 
-      // セグメント描画
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       segments.forEach((seg, i) => {
-        const startAngle = i * arc + angle;
-        const endAngle = startAngle + arc;
-
+        const angle = (seg.weight / totalWeight) * 2 * Math.PI;
         ctx.beginPath();
-        ctx.moveTo(center, center);
-        ctx.arc(center, center, center - 5, startAngle, endAngle);
+        ctx.moveTo(canvas.width/2, canvas.height/2);
+        ctx.arc(canvas.width/2, canvas.height/2, 180, startAngle, startAngle + angle);
         ctx.closePath();
-        ctx.fillStyle = seg.color;
+        ctx.fillStyle = `hsl(${i * 360 / segments.length}, 70%, 60%)`;
         ctx.fill();
 
         // テキスト
         ctx.save();
-        ctx.translate(center, center);
-        ctx.rotate(startAngle + arc / 2);
+        ctx.translate(canvas.width/2, canvas.height/2);
+        ctx.rotate(startAngle + angle / 2);
         ctx.textAlign = "right";
-        ctx.fillStyle = "#000";
-        ctx.font = "20px sans-serif";
-        ctx.fillText(seg.label, center - 20, 10);
+        ctx.fillStyle = "black";
+        ctx.font = "16px sans-serif";
+        ctx.fillText(seg.label, 160, 5);
         ctx.restore();
+
+        startAngle += angle;
       });
-
-      // インジケータ（黒▼）
-      ctx.beginPath();
-      ctx.moveTo(center - 15, 10);
-      ctx.lineTo(center + 15, 10);
-      ctx.lineTo(center, 40);
-      ctx.closePath();
-      ctx.fillStyle = "black";
-      ctx.fill();
     }
 
-    // ======================
-    // 当選決定（インチキ）
-    // ======================
-    function pickWinner() {
-      let r = Math.random() * totalWeight;
-      for (let seg of segments) {
-        if (r < seg.weight) return seg;
-        r -= seg.weight;
-      }
-    }
-
-    // ======================
-    // スピン処理
-    // ======================
     function spin() {
-      spinBtn.disabled = true;
-      const winner = pickWinner();
-      const winnerIndex = segments.indexOf(winner);
-      const arc = 2 * Math.PI / segments.length;
+      if (spinning || segments.length === 0) return;
+      spinning = true;
 
-      // 停止位置を調整（当たりセグメントの中央に止まる）
-      const stopAngle = (3 * Math.PI / 2) - (winnerIndex * arc + arc / 2);
-
-      // 10秒くらい回るように調整
-      const spins = 20; // 回転数（大きいほど多く回る）
-      const finalAngle = stopAngle + spins * 2 * Math.PI;
-
-      let start = null;
-      const duration = 10000; // 10秒
-      const startAngle = angle;
-
-      function animate(ts) {
-        if (!start) start = ts;
-        const progress = Math.min((ts - start) / duration, 1);
-
-        // easeOutCubic
-        const eased = 1 - Math.pow(1 - progress, 3);
-
-        angle = startAngle + (finalAngle - startAngle) * eased;
-
-        drawWheel();
-
-        if (progress < 1) {
-          requestAnimationFrame(animate);
-        } else {
-          alert("結果: " + winner.label);
-          spinBtn.disabled = false;
+      // 当選決定（インチキ確率）
+      const rnd = Math.random();
+      let acc = 0;
+      let chosenIndex = 0;
+      for (let i = 0; i < segments.length; i++) {
+        acc += segments[i].prob || 0;
+        if (rnd <= acc) {
+          chosenIndex = i;
+          break;
         }
       }
 
+      // 角度計算
+      const totalWeight = segments.reduce((a, s) => a + s.weight, 0);
+      let angleAcc = 0;
+      for (let i = 0; i < chosenIndex; i++) {
+        angleAcc += (segments[i].weight / totalWeight) * 2 * Math.PI;
+      }
+      const chosenAngle = angleAcc + (segments[chosenIndex].weight / totalWeight) * Math.PI;
+
+      const spins = 8; // 回転数
+      const finalAngle = (2 * Math.PI * spins) - chosenAngle;
+
+      const duration = 10000; // 10秒
+      const start = performance.now();
+
+      function animate(t) {
+        const elapsed = t - start;
+        if (elapsed < duration) {
+          const progress = elapsed / duration;
+          currentAngle = finalAngle * easeOut(progress);
+          drawRotated();
+          requestAnimationFrame(animate);
+        } else {
+          currentAngle = finalAngle;
+          drawRotated();
+          spinning = false;
+          alert("結果: " + segments[chosenIndex].label);
+        }
+      }
       requestAnimationFrame(animate);
     }
 
-    spinBtn.addEventListener("click", spin);
+    function drawRotated() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(canvas.width/2, canvas.height/2);
+      ctx.rotate(currentAngle);
+      ctx.translate(-canvas.width/2, -canvas.height/2);
+      drawWheel();
+      ctx.restore();
+    }
 
-    drawWheel();
+    function easeOut(t) {
+      return 1 - Math.pow(1 - t, 3);
+    }
+
+    applyConfig();
   </script>
 </body>
 </html>

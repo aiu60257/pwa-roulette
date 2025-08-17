@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>抽選ルーレット（iPhone用）</title>
+
+<!-- PWAっぽく見せるための設定（iOS向けmetaも入れてあります） -->
+<link rel="manifest" href="./manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="./icon-192.png">
+
+<style>
+  body{font-family: -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial;margin:18px;text-align:center;color:#222}
+  h1{font-size:18px;margin-bottom:6px}
+  .stage{position:relative; width:320px; height:320px; margin:12px auto;}
+  #wheel{
+    width:100%; height:100%; border-radius:50%;
+    box-shadow:0 6px 18px rgba(0,0,0,0.18);
+    transform: rotate(0deg);
+    transition: transform 0s;
+    display:block;
+    background: lightgray;
+  }
+  #pointer{
+    position:absolute; left:50%; transform:translateX(-50%); top:-12px;
+    font-size:26px; pointer-events:none;
+  }
+  textarea{width:100%; max-width:480px; height:110px; padding:8px; box-sizing:border-box; font-size:14px}
+  .controls{margin-top:10px}
+  button{padding:10px 14px; font-size:16px; margin:0 6px; border-radius:8px; border:0; background:#0a84ff;color:white}
+  #result{margin-top:12px; font-weight:700; font-size:18px}
+  #history{margin-top:8px; text-align:left; max-width:480px; margin-left:auto; margin-right:auto; padding:6px; background:#fafafa;border-radius:8px; font-size:13px}
+  label.small{display:block; text-align:left; max-width:480px; margin:8px auto 4px; font-size:13px;color:#555}
+</style>
+</head>
+<body>
+  <h1>抽選ルーレット（iPhone専用手順）</h1>
+
+  <div class="stage">
+    <div id="pointer">▲</div>
+    <div id="wheel" aria-hidden="true"></div>
+  </div>
+
+  <label class="small">項目（1行に1つ、重みを使う場合は「名前:重み」）例）当たり:1 または ハズレ</label>
+  <textarea id="itemInput">当たり:1
+ハズレ:3
+ボーナス:1</textarea>
+
+  <div class="controls">
+    <button id="saveBtn">項目を保存</button>
+    <button id="spinBtn">スピン！</button>
+    <button id="clearHistoryBtn" style="background:#ff3b30">履歴クリア</button>
+  </div>
+
+  <div id="result"></div>
+
+  <h3 style="font-size:15px;margin-top:16px">履歴</h3>
+  <div id="history">（まだありません）</div>
+
+<script>
+/* ---- データ保存キー ---- */
+const KEY_ITEMS = 'pwa_roulette_items_v1';
+const KEY_HISTORY = 'pwa_roulette_history_v1';
+
+/* ---- 要素 ---- */
+const wheel = document.getElementById('wheel');
+const textarea = document.getElementById('itemInput');
+const saveBtn = document.getElementById('saveBtn');
+const spinBtn = document.getElementById('spinBtn');
+const resultDiv = document.getElementById('result');
+const historyDiv = document.getElementById('history');
+const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+
+/* ---- 色の配列（必要なら増やしてください） ---- */
+const COLORS = ['#FF6B6B','#FFD93D','#6BCB77','#4D96FF','#AF7CE5','#FF9671','#FFB3C1','#9BE3DE'];
+
+/* ---- 読み込み時：保存済み項目を読み込む ---- */
+function loadItems(){
+  const raw = localStorage.getItem(KEY_ITEMS);
+  if(raw){ textarea.value = raw; }
+}
+function loadHistory(){
+  const raw = localStorage.getItem(KEY_HISTORY);
+  if(!raw){ historyDiv.textContent = '（まだありません）'; return; }
+  const arr = JSON.parse(raw).slice().reverse();
+  historyDiv.innerHTML = arr.map(h => `<div style="padding:6px 0;border-bottom:1px solid #eee">${h.time} — ${h.choice}</div>`).join('');
+}
+
+/* ---- テキストを解析して [{name, weight}] にする ---- */
+function parseItems(text){
+  const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
+  const arr = lines.map(line => {
+    const parts = line.split(':');
+    if(parts.length>=2){
+      const w = parseFloat(parts.slice(1).join(':')) || 1;
+      return { name: parts[0].trim(), weight: Math.max(0,w) };
+    }else{
+      return { name: line, weight: 1 };
+    }
+  }).filter(x => x.weight>0 && x.name);
+  return arr.length ? arr : [{name:'空欄', weight:1}];
+}
+
+/* ---- ホイールのグラデーション背景を作る ---- */
+function renderWheel(items){
+  const total = items.reduce((s,i)=>s+i.weight,0);
+  let cur = 0;
+  const stops = items.map((it, idx) => {
+    const start = cur;
+    const deg = it.weight/total*360;
+    cur += deg;
+    const color = COLORS[idx % COLORS.length];
+    // conic-gradient の各区間は "color startdeg enddeg"
+    return `${color} ${start}deg ${cur}deg`;
+  });
+  wheel.style.background = `conic-gradient(${stops.join(', ')})`;
+}
+
+/* ---- 実際の抽選とアニメーション ---- */
+let currentRotation = 0;
+
+function spinOnce(){
+  const items = parseItems(textarea.value);
+  const total = items.reduce((s,i)=>s+i.weight,0);
+  // ランダムに当たりを選ぶ（重み付き）
+  let r = Math.random()*total;
+  let idx = 0, cum = 0;
+  for(let i=0;i<items.length;i++){
+    cum += items[i].weight;
+    if(r <= cum){ idx = i; break; }
+  }
+  // その区間の角度範囲を求める
+  let start = 0;
+  for(let i=0;i<idx;i++) start += items[i].weight/total*360;
+  const span = items[idx].weight/total*360;
+  const center = start + span/2; // 中心角（deg）--- 0deg は上（▲の位置）
+  // 目印（▲）の位置にくるように回転させる（360 - center）
+  const extraSpins = 3 + Math.floor(Math.random()*3); // 3〜5回転のランダム
+  const final = currentRotation + extraSpins*360 + (360 - center);
+  // アニメーション
+  wheel.style.transition = 'transform 4s cubic-bezier(0.33,1,0.68,1)';
+  wheel.style.transform = `rotate(${final}deg)`;
+  currentRotation = final % 360;
+  spinBtn.disabled = true;
+  // 終了後の処理（4.2s後）
+  setTimeout(()=>{
+    const choice = items[idx].name;
+    resultDiv.textContent = `当選： ${choice} 🎉`;
+    saveHistory(choice);
+    loadHistory();
+    spinBtn.disabled = false;
+    // さらにゆるく戻る（任意） — 今はそのまま停止
+  }, 4200);
+}
+
+/* ---- 履歴保存 ---- */
+function saveHistory(choice){
+  const raw = localStorage.getItem(KEY_HISTORY);
+  const arr = raw ? JSON.parse(raw) : [];
+  arr.push({ choice, time: (new Date()).toLocaleString() });
+  // 履歴は100件までにしておく
+  while(arr.length>100) arr.shift();
+  localStorage.setItem(KEY_HISTORY, JSON.stringify(arr));
+}
+
+/* ---- UIイベント ---- */
+saveBtn.addEventListener('click', ()=>{
+  localStorage.setItem(KEY_ITEMS, textarea.value.trim());
+  renderWheel(parseItems(textarea.value));
+  alert('項目を保存しました（ローカルストレージ）');
+});
+spinBtn.addEventListener('click', spinOnce);
+clearHistoryBtn.addEventListener('click', ()=>{
+  if(confirm('履歴を消しますか？')){ localStorage.removeItem(KEY_HISTORY); loadHistory(); }
+});
+
+/* ---- 初期描画 ---- */
+loadItems();
+const initialItems = parseItems(textarea.value);
+renderWheel(initialItems);
+loadHistory();
+
+/* ---- 画面をタップしたらホイールを止める等の余地は残しています ---- */
+</script>
+</body>
+</html>

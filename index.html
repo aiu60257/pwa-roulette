@@ -1,149 +1,113 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>インチキルーレット</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      background: #f9f9f9;
-    }
-    #roulette-container {
-      position: relative;
-      margin: 20px auto;
-      width: 400px;
-      height: 400px;
-    }
-    #roulette {
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      border: 5px solid #333;
-      transform: rotate(0deg);
-      transition: transform 10s cubic-bezier(0.33, 1, 0.68, 1);
-    }
-    /* インジケータ ▼ */
-    #indicator {
-      position: absolute;
-      top: -30px; /* 円の外に接する位置 */
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 40px;
-      color: red;
-    }
-    form {
-      margin: 20px auto;
-      max-width: 400px;
-      text-align: left;
-      padding: 15px;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      background: #fff;
-    }
-    form label {
-      display: block;
-      margin-top: 10px;
-    }
-    form input, form textarea {
-      width: 100%;
-      padding: 5px;
-      margin-top: 5px;
-    }
-    #spin-btn {
-      margin-top: 20px;
-      padding: 10px 20px;
-      font-size: 18px;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>インチキルーレット</title>
+<style>
+  body { text-align:center; font-family: sans-serif; }
+  #wheel {
+    width: 300px; height: 300px; border-radius: 50%;
+    border: 5px solid #333; margin: 20px auto;
+    position: relative; background: conic-gradient(
+      #f88 0deg 90deg,
+      #8f8 90deg 180deg,
+      #88f 180deg 270deg,
+      #ff8 270deg 360deg
+    );
+    transform: rotate(0deg);
+    transition: transform 4s cubic-bezier(0.17, 0.67, 0.83, 0.67);
+  }
+  #indicator {
+    width: 0; height: 0;
+    border-left: 20px solid transparent;
+    border-right: 20px solid transparent;
+    border-bottom: 30px solid red;
+    position: absolute;
+    top: -30px; left: 50%; transform: translateX(-50%);
+  }
+  #secretPanel {
+    display: none;
+    margin-top: 20px;
+  }
+</style>
 </head>
 <body>
-  <h1>インチキルーレット</h1>
-
-  <div id="roulette-container">
-    <canvas id="roulette"></canvas>
-    <div id="indicator">▼</div>
+  <h2>インチキルーレット</h2>
+  <div style="position:relative; width:300px; margin:auto;">
+    <div id="indicator"></div>
+    <div id="wheel"></div>
   </div>
+  <button onclick="spin()">回す</button>
+
+  <div style="margin-top:30px; font-size:small;">
+    （右下を長押しでパスワード入力）
+  </div>
+
+  <div id="secretPanel">
+    <h3>裏設定</h3>
+    強制的に止める場所:
+    <select id="forceSelect">
+      <option value="">なし</option>
+      <option value="0">A (赤)</option>
+      <option value="1">B (緑)</option>
+      <option value="2">C (青)</option>
+      <option value="3">D (黄)</option>
+    </select>
+  </div>
+
+<script>
+let wheel = document.getElementById("wheel");
+let isSpinning = false;
+
+function spin() {
+  if (isSpinning) return;
+  isSpinning = true;
   
-  <button id="spin-btn">回す！</button>
+  // セグメント数（A,B,C,D = 4つ）
+  const segments = 4;
+  const baseAngle = 360 / segments;
 
-  <form id="settings-form">
-    <h3>ルーレット設定</h3>
-    <label>分割数: <input type="number" id="segments" value="4" min="2"></label>
-    <label>項目（カンマ区切り）:
-      <textarea id="labels">A,B,C,D</textarea>
-    </label>
-    <label style="display:none">インチキ確率（0~1の間）: <input type="number" step="0.1" id="cheat" value="0.3"></label>
-  </form>
+  // 裏設定（強制停止）
+  let forceIndex = document.getElementById("forceSelect").value;
+  
+  // 乱数で決定
+  let chosenIndex = forceIndex !== "" ? parseInt(forceIndex) : Math.floor(Math.random()*segments);
 
-  <script>
-    const canvas = document.getElementById('roulette');
-    const ctx = canvas.getContext('2d');
-    const size = 400;
-    canvas.width = size;
-    canvas.height = size;
+  // 真上に来る角度を計算（右回転）
+  let stopAngle = 360 - (chosenIndex * baseAngle + baseAngle/2);
+  
+  // 不自然防止のため ±5度ランダムにずらす
+  stopAngle += (Math.random()*10 - 5);
 
-    let currentRotation = 0;
-    let segments = 4;
-    let labels = ["A","B","C","D"];
-    let cheatRate = 0.3; // 管理者用（フォームには非表示）
+  // 5～7周してからストップ
+  let spins = 360 * (5 + Math.floor(Math.random()*3));
+  let finalAngle = spins + stopAngle;
 
-    function drawRoulette() {
-      ctx.clearRect(0,0,size,size);
-      let anglePerSegment = 2 * Math.PI / segments;
-      for (let i = 0; i < segments; i++) {
-        ctx.beginPath();
-        ctx.moveTo(size/2, size/2);
-        ctx.arc(size/2, size/2, size/2-5, i*anglePerSegment, (i+1)*anglePerSegment);
-        ctx.fillStyle = i % 2 === 0 ? "#fdd835" : "#4fc3f7";
-        ctx.fill();
-        ctx.stroke();
+  wheel.style.transition = "none";       // 初期化
+  wheel.style.transform = "rotate(0deg)";
+  setTimeout(()=>{
+    wheel.style.transition = "transform 4s cubic-bezier(0.17,0.67,0.83,0.67)";
+    wheel.style.transform = `rotate(${finalAngle}deg)`;
+  },50);
 
-        // ラベル
-        ctx.save();
-        ctx.translate(size/2, size/2);
-        ctx.rotate(i*anglePerSegment + anglePerSegment/2);
-        ctx.textAlign = "right";
-        ctx.fillStyle = "#000";
-        ctx.font = "16px Arial";
-        ctx.fillText(labels[i] || "", size/2 - 20, 5);
-        ctx.restore();
+  setTimeout(()=>{ isSpinning = false; }, 4500);
+}
+
+// 秘密パネル呼び出し
+document.body.addEventListener("contextmenu", e => e.preventDefault()); // 長押し防止
+let secretTimer;
+document.body.addEventListener("touchstart", e=>{
+  if (e.touches[0].clientX > window.innerWidth*0.8 && e.touches[0].clientY > window.innerHeight*0.8) {
+    secretTimer = setTimeout(()=>{
+      let pw = prompt("パスワードを入力");
+      if (pw === "1234") {
+        document.getElementById("secretPanel").style.display = "block";
       }
-    }
-
-    function spinRoulette() {
-      const anglePerSegment = 360 / segments;
-      let targetIndex;
-
-      // インチキ判定
-      if (Math.random() < cheatRate) {
-        targetIndex = 0; // Aにインチキで止める
-      } else {
-        targetIndex = Math.floor(Math.random() * segments);
-      }
-
-      const targetAngle = 360 - (targetIndex * anglePerSegment + anglePerSegment / 2);
-      const spinAngle = 360 * 8 + targetAngle; // 8回転 + 目標
-      currentRotation = spinAngle;
-
-      canvas.style.transition = 'transform 10s cubic-bezier(0.33, 1, 0.68, 1)';
-      canvas.style.transform = `rotate(${spinAngle}deg)`;
-
-      setTimeout(() => {
-        alert("結果: " + labels[targetIndex]);
-      }, 10000);
-    }
-
-    document.getElementById('spin-btn').addEventListener('click', spinRoulette);
-
-    // 設定フォーム変更イベント
-    document.getElementById('settings-form').addEventListener('input', () => {
-      segments = parseInt(document.getElementById('segments').value);
-      labels = document.getElementById('labels').value.split(',');
-      drawRoulette();
-    });
-
-    drawRoulette();
-  </script>
+    },1000);
+  }
+});
+document.body.addEventListener("touchend", ()=>clearTimeout(secretTimer));
+</script>
 </body>
 </html>

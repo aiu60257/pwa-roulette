@@ -1,129 +1,143 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<title>インチキルーレット</title>
-<style>
-  body { text-align: center; font-family: sans-serif; }
-  canvas { margin-top: 20px; }
-  #indicator { font-size: 40px; }
-  #result { margin-top: 20px; font-size: 20px; font-weight: bold; }
-  #adminPanel { display: none; border: 1px solid #aaa; padding: 10px; margin-top: 20px; }
-</style>
+  <meta charset="UTF-8">
+  <title>インチキルーレット</title>
+  <style>
+    body { text-align: center; font-family: sans-serif; }
+    canvas { border: 2px solid black; margin: 20px; }
+    #indicator { font-size: 40px; margin-top: -30px; }
+    .hidden { display: none; }
+  </style>
 </head>
 <body>
-  <h1>インチキルーレット</h1>
+  <h2>インチキルーレット</h2>
   <div id="indicator">▼</div>
-  <canvas id="roulette" width="300" height="300"></canvas><br>
+  <canvas id="wheel" width="400" height="400"></canvas>
+  <br>
   <button onclick="spin()">回す！</button>
-  <div id="result"></div>
+  <p id="result"></p>
 
-  <!-- 裏設定呼び出し -->
-  <input type="password" id="password" placeholder="パスワード">
-  <button onclick="checkPassword()">設定モード</button>
+  <h3>項目設定</h3>
+  <textarea id="items" rows="4" cols="40">A,25;B,25;C,25;D,25</textarea>
+  <p>フォーマット: 項目名,確率(%) ; 区切り</p>
 
-  <!-- 裏設定パネル -->
-  <div id="adminPanel">
-    <h3>裏設定</h3>
-    <label>分割数: <input type="number" id="segments" value="4"></label><br>
-    <textarea id="labels" rows="4" cols="30">A,B,C,D</textarea><br>
-    <textarea id="trueProb" rows="4" cols="30">25,25,25,25</textarea><br>
-    <textarea id="fakeProb" rows="4" cols="30">40,20,20,20</textarea><br>
-    <button onclick="applySettings()">設定を反映</button>
+  <button onclick="unlock()">主催者設定（パスワード必要）</button>
+  <div id="admin" class="hidden">
+    <h3>本当の確率設定</h3>
+    <textarea id="trueItems" rows="4" cols="40">A,25;B,25;C,25;D,25</textarea>
+    <p>この確率が実際に使用されます</p>
   </div>
 
-<script>
-const canvas = document.getElementById("roulette");
-const ctx = canvas.getContext("2d");
-const resultDiv = document.getElementById("result");
+  <script>
+    const canvas = document.getElementById("wheel");
+    const ctx = canvas.getContext("2d");
+    let angle = 0;
+    let spinning = false;
+    let items = [];
+    let trueItems = [];
 
-let labels = ["A","B","C","D"];
-let trueProb = [25,25,25,25];
-let fakeProb = [40,20,20,20];
-let useFake = false;
-
-function drawRoulette(){
-  const seg = labels.length;
-  const angle = 2 * Math.PI / seg;
-  ctx.clearRect(0,0,300,300);
-  for(let i=0;i<seg;i++){
-    ctx.beginPath();
-    ctx.moveTo(150,150);
-    ctx.arc(150,150,140, i*angle, (i+1)*angle);
-    ctx.fillStyle = i%2==0 ? "#f99" : "#99f";
-    ctx.fill();
-    ctx.stroke();
-    ctx.save();
-    ctx.translate(150,150);
-    ctx.rotate(i*angle+angle/2);
-    ctx.textAlign="right";
-    ctx.fillStyle="black";
-    ctx.font="16px sans-serif";
-    ctx.fillText(labels[i],120,5);
-    ctx.restore();
-  }
-}
-drawRoulette();
-
-function weightedRandom(probabilities){
-  let sum=0, r=Math.random()*100;
-  for(let i=0;i<probabilities.length;i++){
-    sum+=probabilities[i];
-    if(r<sum) return i;
-  }
-  return probabilities.length-1;
-}
-
-function spin(){
-  const probs = useFake ? fakeProb : trueProb;
-  const index = weightedRandom(probs);
-  const seg = labels.length;
-  const anglePerSeg = 2*Math.PI/seg;
-  
-  // 中心からランダムに±5度ズラす
-  const offset = (Math.random()-0.5)*(Math.PI/36);
-
-  const stopAngle = (3*Math.PI/2) - (index*anglePerSeg + anglePerSeg/2) + offset;
-
-  let currentAngle=0, spins = Math.floor(Math.random()*3)+5; // 5〜7回転
-  let totalRotation = spins*2*Math.PI + stopAngle;
-
-  let start=null;
-  function animate(t){
-    if(!start) start=t;
-    const progress = Math.min((t-start)/3000,1);
-    const ease = 1-Math.pow(1-progress,3);
-    const angle = ease*totalRotation;
-    ctx.save();
-    ctx.translate(150,150);
-    ctx.rotate(angle);
-    ctx.translate(-150,-150);
-    drawRoulette();
-    ctx.restore();
-    if(progress<1){
-      requestAnimationFrame(animate);
-    }else{
-      resultDiv.textContent="結果: "+labels[index];
+    function parseInput(text) {
+      return text.split(";").map(x=>{
+        let [name, prob] = x.split(",");
+        return {name:name.trim(), prob:parseFloat(prob)};
+      });
     }
-  }
-  requestAnimationFrame(animate);
-}
 
-// パスワード判定
-function checkPassword(){
-  if(document.getElementById("password").value==="8888"){
-    document.getElementById("adminPanel").style.display="block";
-  }
-}
+    function drawWheel(list) {
+      ctx.clearRect(0,0,400,400);
+      let total = list.reduce((a,b)=>a+b.prob,0);
+      let start = 0;
+      list.forEach((item,i)=>{
+        let slice = (item.prob/total)*2*Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(200,200);
+        ctx.arc(200,200,180,start,start+slice);
+        ctx.fillStyle = `hsl(${i*60},70%,60%)`;
+        ctx.fill();
+        ctx.stroke();
+        ctx.save();
+        ctx.translate(200,200);
+        ctx.rotate(start+slice/2);
+        ctx.textAlign="right";
+        ctx.fillStyle="black";
+        ctx.font="16px sans-serif";
+        ctx.fillText(item.name,170,5);
+        ctx.restore();
+        start += slice;
+      });
+    }
 
-// 設定反映
-function applySettings(){
-  const seg = parseInt(document.getElementById("segments").value);
-  labels = document.getElementById("labels").value.split(",");
-  trueProb = document.getElementById("trueProb").value.split(",").map(Number);
-  fakeProb = document.getElementById("fakeProb").value.split(",").map(Number);
-  drawRoulette();
-}
-</script>
+    function spin() {
+      if(spinning) return;
+      spinning = true;
+
+      items = parseInput(document.getElementById("items").value);
+      trueItems = document.getElementById("admin").classList.contains("hidden") ? items : parseInput(document.getElementById("trueItems").value);
+
+      let total = trueItems.reduce((a,b)=>a+b.prob,0);
+      let r = Math.random()*total;
+      let sum=0, selected=null;
+      for(let it of trueItems){
+        sum += it.prob;
+        if(r<=sum){ selected=it; break; }
+      }
+
+      let index = trueItems.findIndex(i=>i.name===selected.name);
+      let startAngle=0;
+      for(let i=0;i<index;i++){
+        startAngle += (trueItems[i].prob/total)*2*Math.PI;
+      }
+      let slice = (selected.prob/total)*2*Math.PI;
+      let targetAngle = startAngle + slice/2;
+
+      // インジケータ(真上)に合わせる。少しブレ追加。
+      let stopAngle = (3*Math.PI/2 - targetAngle) + (Math.random()*0.05 - 0.025);
+
+      let spinAngle = stopAngle + Math.PI*8; // 何回転かして止まる
+      let duration = 3000;
+      let startTime = null;
+
+      function animate(t){
+        if(!startTime) startTime=t;
+        let progress = (t-startTime)/duration;
+        if(progress<1){
+          angle = spinAngle*easeOut(progress);
+          drawRotated();
+          requestAnimationFrame(animate);
+        } else {
+          angle = stopAngle;
+          drawRotated();
+          spinning=false;
+          document.getElementById("result").innerText = "結果: "+selected.name;
+        }
+      }
+      requestAnimationFrame(animate);
+    }
+
+    function easeOut(t){ return 1-Math.pow(1-t,3); }
+
+    function drawRotated(){
+      ctx.save();
+      ctx.translate(200,200);
+      ctx.rotate(angle);
+      ctx.translate(-200,-200);
+      drawWheel(items);
+      ctx.restore();
+    }
+
+    function unlock(){
+      let pw = prompt("パスワードを入力してください:");
+      if(pw==="8888"){
+        document.getElementById("admin").classList.remove("hidden");
+      } else {
+        alert("パスワードが違います");
+      }
+    }
+
+    // 初期描画
+    items = parseInput(document.getElementById("items").value);
+    drawWheel(items);
+  </script>
 </body>
 </html>

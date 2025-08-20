@@ -1,177 +1,405 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>インチキルーレット</title>
-  <style>
-    body { font-family: sans-serif; text-align: center; }
-    canvas { margin: 20px auto; display: block; }
-    #result { font-size: 20px; margin-top: 10px; font-weight: bold; }
-    .hidden { display: none; }
-    #secretBtn {
-      position: fixed;
-      right: 5px; bottom: 5px;
-      width: 30px; height: 30px;
-      background: white; border: none;
-      opacity: 0.05; /* 見えないボタン */
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>重み付きルーレット（透明モード）</title>
+<style>
+  :root { --bg:#0b0f14; --card:#121820; --edge:#1c2430; --text:#e9eef5; --muted:#9fb0c6; --accent:#6fb1ff; }
+  body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;}
+  .app{display:grid;grid-template-columns:1fr 420px;gap:18px;min-height:100vh;padding:18px;box-sizing:border-box;}
+  .panel{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);}
+  h1{margin:0 0 10px;font-size:20px;letter-spacing:.02em}
+  .board{position:relative;display:grid;place-items:center}
+  canvas{width:min(560px,80vw);height:min(560px,80vw);max-width:560px;max-height:560px;display:block}
+  .pointer{position:absolute;top:8px;width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-top:18px solid #fff;border-radius:3px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6));}
+  .controls label{font-size:12px;color:var(--muted)}
+  .grid{display:grid;gap:8px}
+  .row{display:flex;gap:8px;align-items:center}
+  input[type="number"],input[type="text"]{background:#0f141b;border:1px solid var(--edge);color:var(--text);padding:8px;border-radius:10px;outline:none;width:100%}
+  input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-inner-spin-button{opacity:1}
+  .btn{cursor:pointer;background:#1b2330;border:1px solid var(--edge);color:var(--text);padding:10px 12px;border-radius:12px;font-weight:600;transition:.15s}
+  .btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
+  .btn.primary{background:var(--accent);color:#00142d;border-color:#69a9fb}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .tiny{font-size:11px;color:var(--muted)}
+  .pill{display:inline-flex;align-items:center;gap:6px;background:#0f151d;border:1px solid var(--edge);padding:6px 10px;border-radius:999px;font-size:12px}
+  .danger{color:#ffb4b4}
+  .ok{color:#7dffa7}
+  .bar{height:8px;background:#0c1219;border-radius:999px;border:1px solid var(--edge);overflow:hidden}
+  .bar>span{display:block;height:100%;}
+  .log{max-height:160px;overflow:auto;background:#0a0f15;border:1px dashed #243040;border-radius:12px;padding:8px;font-size:12px;color:#cfe2ff}
+  .badge{font-size:11px;color:#00142d;background:#a3d2ff;padding:4px 8px;border-radius:999px;font-weight:700}
+  .warn{font-size:12px;color:#ffc28b}
+  .mode{display:flex;align-items:center;gap:8px}
+</style>
 </head>
 <body>
-  <h2>インチキルーレット</h2>
-  <canvas id="wheel" width="400" height="400"></canvas><br>
-  <button id="spin">回す！</button>
-  <div id="result"></div>
+  <div class="app">
+    <!-- 盤面 -->
+    <div class="panel board">
+      <h1>重み付きルーレット</h1>
+      <div class="pointer" aria-hidden="true"></div>
+      <canvas id="wheel" width="700" height="700" aria-label="ルーレット盤"></canvas>
+      <div class="grid" style="width:min(560px,80vw);gap:10px;margin-top:10px">
+        <div class="row" style="justify-content:space-between">
+          <div class="mode">
+            <span class="badge" id="modeBadge">公開重み</span>
+            <label><input type="checkbox" id="demoMode"> デモモード（別重みを使用／明示）</label>
+          </div>
+          <div class="split" style="width:320px">
+            <button class="btn" data-time="1">1s</button>
+            <button class="btn" data-time="5">5s</button>
+            <button class="btn" data-time="10">10s</button>
+            <button class="btn" data-time="15">15s</button>
+          </div>
+        </div>
+        <div class="row" style="gap:12px">
+          <button class="btn primary" id="spinBtn">回す</button>
+          <button class="btn" id="stopBtn" disabled>リセット</button>
+          <span class="tiny">回転は右回転・徐々に減速して停止します（自然な挙動）。</span>
+        </div>
+        <div class="row" id="resultRow" style="display:none">
+          <div class="pill"><strong>結果：</strong><span id="resultText"></span></div>
+        </div>
+      </div>
+    </div>
 
-  <!-- 表向き設定フォーム -->
-  <h3>表向きの設定</h3>
-  <div id="settings"></div>
-  
-  <!-- 本当の確率設定フォーム（隠し） -->
-  <div id="secretSettings" class="hidden">
-    <h3>本当の確率</h3>
-    <div id="secretConfig"></div>
+    <!-- 設定 -->
+    <div class="panel">
+      <h1>設定</h1>
+      <div class="grid">
+        <div class="row">
+          <label style="min-width:92px">分割数</label>
+          <input type="number" id="count" min="2" max="24" value="6">
+          <button class="btn" id="applyCount">反映</button>
+        </div>
+
+        <div class="grid" id="items"></div>
+
+        <div class="grid" style="margin-top:8px">
+          <div class="row" style="justify-content:space-between">
+            <span class="tiny">公開重みの合計</span>
+            <span class="tiny" id="sumPublic">—</span>
+          </div>
+          <div class="bar"><span id="barPublic"></span></div>
+          <div class="row" style="justify-content:space-between">
+            <span class="tiny">デモ重みの合計</span>
+            <span class="tiny" id="sumDemo">—</span>
+          </div>
+          <div class="bar"><span id="barDemo"></span></div>
+          <span class="warn">※ このデモは「今どの重みを使っているか」を<span class="ok">常に表示</span>します。隠し操作はありません。</span>
+        </div>
+
+        <div class="grid" style="margin-top:12px">
+          <span class="tiny">ログ</span>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <button id="secretBtn"></button>
+<script>
+(() => {
+  // ---------- 状態 ----------
+  const canvas = document.getElementById('wheel');
+  const ctx = canvas.getContext('2d');
+  const R = canvas.width * 0.42;
+  const cx = canvas.width / 2, cy = canvas.height / 2;
 
-  <script>
-    const canvas = document.getElementById("wheel");
-    const ctx = canvas.getContext("2d");
-    const size = canvas.width;
-    const radius = size / 2;
-    let currentAngle = 0;
+  let items = [];         // { label, wPublic, wDemo, color }
+  let angleStart = 0;     // 現在角度（rad, 0は上方向。右回転＝角度増加）
+  let spinning = false;
+  let spinT = 5;          // デフォ回転時間
+  let spinRAF = 0;
 
-    // 初期項目
-    let items = [
-      { label: "A", publicProb: 25, secretProb: 25 },
-      { label: "B", publicProb: 25, secretProb: 25 },
-      { label: "C", publicProb: 25, secretProb: 25 },
-      { label: "D", publicProb: 25, secretProb: 25 }
-    ];
+  const spinBtn = document.getElementById('spinBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const resultRow = document.getElementById('resultRow');
+  const resultText = document.getElementById('resultText');
+  const itemsWrap = document.getElementById('items');
+  const countInput = document.getElementById('count');
+  const applyCountBtn = document.getElementById('applyCount');
+  const demoModeChk = document.getElementById('demoMode');
+  const modeBadge = document.getElementById('modeBadge');
+  const logEl = document.getElementById('log');
 
-    let useSecret = false; // 裏確率を使うかどうか
+  const sumPublicEl = document.getElementById('sumPublic');
+  const sumDemoEl = document.getElementById('sumDemo');
+  const barPublic = document.getElementById('barPublic');
+  const barDemo = document.getElementById('barDemo');
 
-    // ホイール描画
-    function drawWheel() {
-      ctx.clearRect(0, 0, size, size);
-      const probs = items.map(it => useSecret ? it.secretProb : it.publicProb);
-      const total = probs.reduce((a, b) => a + b, 0);
-      let startAngle = currentAngle;
-      for (let i = 0; i < items.length; i++) {
-        const angle = (probs[i] / total) * Math.PI * 2;
-        ctx.beginPath();
-        ctx.moveTo(radius, radius);
-        ctx.arc(radius, radius, radius, startAngle, startAngle + angle);
-        ctx.fillStyle = `hsl(${i * 360 / items.length}, 80%, 60%)`;
-        ctx.fill();
-        ctx.stroke();
-        ctx.save();
-        ctx.translate(radius, radius);
-        ctx.rotate(startAngle + angle / 2);
-        ctx.textAlign = "right";
-        ctx.fillStyle = "#000";
-        ctx.font = "16px sans-serif";
-        ctx.fillText(items[i].label, radius - 10, 5);
-        ctx.restore();
-        startAngle += angle;
-      }
-      // インジケータ
-      ctx.fillStyle = "black";
-      ctx.beginPath();
-      ctx.moveTo(radius, 0);
-      ctx.lineTo(radius - 10, 20);
-      ctx.lineTo(radius + 10, 20);
-      ctx.closePath();
-      ctx.fill();
-    }
+  // ---------- 初期データ ----------
+  function randColor(i){
+    // 目に優しいパステル調
+    const h = (i * 137.508) % 360;
+    return `hsl(${h}deg 70% 60%)`;
+  }
+  function initItems(n=6){
+    items = Array.from({length:n}, (_,i)=>({
+      label: `項目${i+1}`,
+      wPublic: 1/n,
+      wDemo: 1/n,
+      color: randColor(i)
+    }));
+  }
 
-    // 当選アイテムを確率で選択
-    function pickItem() {
-      const probs = items.map(it => useSecret ? it.secretProb : it.publicProb);
-      const total = probs.reduce((a, b) => a + b, 0);
-      let r = Math.random() * total;
-      for (let i = 0; i < items.length; i++) {
-        if (r < probs[i]) return i;
-        r -= probs[i];
-      }
-      return items.length - 1;
-    }
+  // ---------- UI ----------
+  function fmtPct(x){ return (x*100).toFixed(1) + '%'; }
+  function clamp01(x){ return Math.max(0, Math.min(1, x)); }
 
-    // スピン処理
-    function spinWheel() {
-      const winnerIndex = pickItem();
-      const probs = items.map(it => useSecret ? it.secretProb : it.publicProb);
-      const total = probs.reduce((a, b) => a + b, 0);
-
-      // 当選角度範囲を計算
-      let startAngle = 0;
-      for (let i = 0; i < winnerIndex; i++) {
-        startAngle += (probs[i] / total) * Math.PI * 2;
-      }
-      let endAngle = startAngle + (probs[winnerIndex] / total) * Math.PI * 2;
-
-      // 真上(= -90°)に止める → ランダムにその範囲の角度を選ぶ
-      const targetAngle = -Math.PI / 2 - (startAngle + Math.random() * (endAngle - startAngle));
-
-      // 複数周回してから止める
-      const spins = 5; 
-      const finalAngle = targetAngle + Math.PI * 2 * spins;
-
-      let duration = 3000; // 3秒
-      let start = null;
-
-      function animate(timestamp) {
-        if (!start) start = timestamp;
-        let progress = (timestamp - start) / duration;
-        if (progress > 1) progress = 1;
-        const ease = 1 - Math.pow(1 - progress, 3); // イージング（減速）
-        currentAngle = currentAngle * (1 - ease) + finalAngle * ease;
-        drawWheel();
-        if (progress < 1) {
-          requestAnimationFrame(animate);
-        } else {
-          document.getElementById("result").innerText = "結果: " + items[winnerIndex].label;
-        }
-      }
-      requestAnimationFrame(animate);
-    }
-
-    // 設定フォーム生成
-    function renderSettings() {
-      const settingsDiv = document.getElementById("settings");
-      const secretDiv = document.getElementById("secretConfig");
-      settingsDiv.innerHTML = "";
-      secretDiv.innerHTML = "";
-      items.forEach((it, idx) => {
-        settingsDiv.innerHTML += `
-          <div>
-            <input value="${it.label}" onchange="items[${idx}].label=this.value">
-            表確率: <input type="number" value="${it.publicProb}" onchange="items[${idx}].publicProb=+this.value"> %
-          </div>`;
-        secretDiv.innerHTML += `
-          <div>
-            ${it.label} 本当: <input type="number" value="${it.secretProb}" onchange="items[${idx}].secretProb=+this.value"> %
-          </div>`;
+  function renderEditor(){
+    itemsWrap.innerHTML = '';
+    items.forEach((it, i) => {
+      const row = document.createElement('div'); row.className = 'row'; row.style.gap='6px';
+      row.innerHTML = `
+        <span style="width:48px" class="tiny">#${i+1}</span>
+        <input type="text" value="${it.label}" data-i="${i}" data-k="label" />
+        <input type="number" step="0.001" min="0" value="${it.wPublic}" data-i="${i}" data-k="wPublic" title="公開重み">
+        <input type="number" step="0.001" min="0" value="${it.wDemo}" data-i="${i}" data-k="wDemo" title="デモ重み">
+      `;
+      itemsWrap.appendChild(row);
+    });
+    itemsWrap.querySelectorAll('input').forEach(inp => {
+      inp.addEventListener('input', e => {
+        const i = +e.target.dataset.i, k = e.target.dataset.k;
+        const v = (k === 'label') ? e.target.value : Math.max(0, parseFloat(e.target.value||0));
+        items[i][k] = v;
+        updateSums();
+        draw();
       });
-    }
+    });
+    updateSums();
+  }
 
-    // 隠しボタン
-    document.getElementById("secretBtn").onclick = () => {
-      const pw = prompt("パスワードを入力:");
-      if (pw === "8888") {
-        document.getElementById("secretSettings").classList.toggle("hidden");
-        useSecret = !useSecret;
-        drawWheel();
+  function updateSums(){
+    const sPub = items.reduce((a,b)=>a+(+b.wPublic||0),0);
+    const sDem = items.reduce((a,b)=>a+(+b.wDemo||0),0);
+    sumPublicEl.textContent = `${sPub.toFixed(3)} (${fmtPct(clamp01(sPub))}目安)`;
+    sumDemoEl.textContent   = `${sDem.toFixed(3)} (${fmtPct(clamp01(sDem))}目安)`;
+    barPublic.firstChild && (barPublic.innerHTML='');
+    barDemo.firstChild && (barDemo.innerHTML='');
+    const p1 = document.createElement('span'); p1.style.width = `${clamp01(sPub)*100}%`;
+    const p2 = document.createElement('span'); p2.style.width = `${clamp01(sDem)*100}%`;
+    barPublic.appendChild(p1); barDemo.appendChild(p2);
+  }
+
+  document.querySelectorAll('button[data-time]').forEach(b=>{
+    b.addEventListener('click',()=>{
+      spinT = +b.dataset.time;
+      log(`回転時間: ${spinT}s を選択`);
+    });
+  });
+
+  demoModeChk.addEventListener('change', ()=>{
+    modeBadge.textContent = demoModeChk.checked ? 'デモ重み' : '公開重み';
+    modeBadge.style.background = demoModeChk.checked ? '#ffd37a' : '#a3d2ff';
+    draw();
+  });
+
+  applyCountBtn.addEventListener('click', ()=>{
+    const n = Math.max(2, Math.min(24, +countInput.value||6));
+    initItems(n);
+    renderEditor();
+    draw();
+  });
+
+  // ---------- 描画 ----------
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // 外枠
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate(angleStart);
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#0c1219';
+    ctx.fillStyle = '#0b1016';
+    ctx.beginPath(); ctx.arc(0,0,R+24,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0,0,R+16,0,Math.PI*2); ctx.stroke();
+
+    const weights = (demoModeChk.checked ? items.map(i=>i.wDemo) : items.map(i=>i.wPublic));
+    const sum = weights.reduce((a,b)=>a+(+b||0),0) || 1;
+    let a0 = -Math.PI/2; // 上が0番目の始点（インジケータ真上）
+
+    // セグメント
+    weights.forEach((w, i) => {
+      const frac = (w>0? w/sum : 0);
+      const a1 = a0;
+      const a2 = a0 + frac * Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(0,0);
+      ctx.arc(0,0,R,a1,a2,false);
+      ctx.closePath();
+      ctx.fillStyle = items[i].color;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.25)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // ラベル
+      const mid = (a1+a2)/2;
+      ctx.save();
+      ctx.rotate(mid);
+      ctx.translate(R*0.72,0);
+      ctx.rotate(Math.PI/2);
+      ctx.fillStyle = '#0b0f14';
+      ctx.font = '600 16px system-ui, sans-serif';
+      const label = items[i].label || `項目${i+1}`;
+      // 小さすぎるセグメントは省略
+      if (frac > 0.04) {
+        ctx.textAlign = 'center';
+        ctx.fillText(label, 0, 6);
       }
-    };
+      ctx.restore();
 
-    document.getElementById("spin").onclick = () => {
-      spinWheel();
-    };
+      a0 = a2;
+    });
 
-    renderSettings();
-    drawWheel();
-  </script>
+    // 中央キャップ
+    ctx.beginPath();
+    ctx.fillStyle = '#0a0f14';
+    ctx.arc(0,0,36,0,Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle='#1e2836'; ctx.lineWidth=3; ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // ---------- 選択ロジック ----------
+  function weightedPick(weights){
+    const sum = weights.reduce((a,b)=>a+b,0);
+    if (sum<=0) return 0;
+    const r = Math.random() * sum;
+    let acc = 0;
+    for (let i=0;i<weights.length;i++){
+      acc += weights[i];
+      if (r <= acc) return i;
+    }
+    return weights.length-1;
+  }
+
+  // セグメントの角度レンジを返す（上を起点）
+  function segmentAngles(weights, idx){
+    const sum = weights.reduce((a,b)=>a+(+b||0),0) || 1;
+    let aStart = -Math.PI/2;
+    for (let i=0;i<idx;i++){
+      aStart += (weights[i]/sum) * Math.PI*2;
+    }
+    const aEnd = aStart + (weights[idx]/sum) * Math.PI*2;
+    return [aStart, aEnd];
+  }
+
+  // ---------- スピン ----------
+  function spin(){
+    if (spinning) return;
+    const weights = (demoModeChk.checked ? items.map(i=>+i.wDemo||0) : items.map(i=>+i.wPublic||0));
+    const sum = weights.reduce((a,b)=>a+b,0);
+    if (sum<=0) { alert('重みの合計が0です。'); return; }
+
+    // 当選インデックス
+    const win = weightedPick(weights);
+    const [a1, a2] = segmentAngles(weights, win);
+    const aMid = (a1+a2)/2;
+
+    // いまの角度→最終的に「インジケータ真上（-π/2）」で aMid が来るように
+    // 必要角度（現在からの増分）
+    const targetToTop = (-Math.PI/2); // インジケータは固定で真上
+    // 盤面を右回転させるので、盤面の aMid を targetToTop に持ってくるには
+    // Δ = (targetToTop - (currAngle + aMid)) を 2πの倍数だけ足して正の角度にする
+    let delta = (targetToTop - (angleStart + aMid));
+    while (delta < 0) delta += Math.PI*2;
+    // “自然さ”のために数周足す（初速≥ 2rps を満たすよう調整）
+    const minOmega0 = 4*Math.PI; // 2 rps = 4π rad/s
+    let total = delta;
+    // 等加速度で T秒後に停止（ω(T)=0）。総角度θ = 1/2 α T^2, ω0 = αT
+    // ⇒ ω0 = 2θ/T
+    while ((2*total/spinT) < minOmega0){
+      total += Math.PI*2;
+    }
+    // さらに少しランダム（見栄え）
+    const extra = (Math.random()*0.6 + 0.2) * Math.PI*2; // 0.2〜0.8周
+    total += extra;
+
+    const alpha = 2*total / (spinT*spinT); // 正（右回転）
+    const omega0 = alpha * spinT;
+
+    const t0 = performance.now();
+    spinning = true;
+    spinBtn.disabled = true;
+    stopBtn.disabled = true;
+    resultRow.style.display = 'none';
+
+    cancelAnimationFrame(spinRAF);
+    function frame(now){
+      const t = (now - t0)/1000;
+      if (t >= spinT){
+        // 終了
+        angleStart += total; // きっちり目標角度
+        angleStart = angleStart % (Math.PI*2);
+        draw();
+        spinning = false;
+        spinBtn.disabled = false;
+        stopBtn.disabled = false;
+        resultRow.style.display = '';
+        resultText.textContent = `${items[win].label}（${demoModeChk.checked ? 'デモ重み' : '公開重み'}）`;
+        log(`結果: ${items[win].label} [${demoModeChk.checked ? 'デモ重み' : '公開重み'}]`);
+        return;
+      }
+      // 等加速度運動: θ(t) = ω0 t - 1/2 α t^2
+      const theta = omega0*t - 0.5*alpha*t*t;
+      angleStart = (angleStart + theta - (angleStart)) % (Math.PI*2); // 差分加算
+      // 実際には累積でOK
+      angleStart = (angleStart + (omega0*t - 0.5*alpha*t*t)) % (Math.PI*2);
+      // ↑上で2回入ってしまうので修正：累積専用変数を使う
+    }
+    // 修正：累積角の正しい加算
+    const baseAngle = angleStart;
+    function frame2(now){
+      const t = (now - t0)/1000;
+      if (t >= spinT){
+        angleStart = (baseAngle + total) % (Math.PI*2);
+        draw();
+        spinning = false;
+        spinBtn.disabled = false;
+        stopBtn.disabled = false;
+        resultRow.style.display = '';
+        resultText.textContent = `${items[win].label}（${demoModeChk.checked ? 'デモ重み' : '公開重み'}）`;
+        log(`結果: ${items[win].label} [${demoModeChk.checked ? 'デモ重み' : '公開重み'}]`);
+        return;
+      }
+      const theta = omega0*t - 0.5*alpha*t*t;
+      angleStart = (baseAngle + theta) % (Math.PI*2);
+      draw();
+      spinRAF = requestAnimationFrame(frame2);
+    }
+    spinRAF = requestAnimationFrame(frame2);
+  }
+
+  function reset(){
+    if (spinning) return;
+    resultRow.style.display = 'none';
+    angleStart = 0;
+    draw();
+    log('リセット');
+  }
+
+  // ---------- ログ ----------
+  function log(msg){
+    const ts = new Date().toLocaleTimeString();
+    logEl.innerHTML = `<div>[${ts}] ${msg}</div>` + logEl.innerHTML;
+  }
+
+  // ---------- 起動 ----------
+  initItems(6);
+  renderEditor();
+  updateSums();
+  draw();
+
+  // イベント
+  spinBtn.addEventListener('click', spin);
+  stopBtn.addEventListener('click', reset);
+})();
+</script>
 </body>
 </html>

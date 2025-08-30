@@ -2,7 +2,7 @@
   "name": "抽選ルーレット",
   "short_name": "ルーレット",
   "start_url": "./index.html",
-  "display": "standalone",
+  "display": "fullscreen",
   "theme_color": "#0a84ff",
   "background_color": "#ffffff",
   "icons": [

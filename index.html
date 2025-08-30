@@ -275,7 +275,7 @@ function spinOnce(){
   const totalAngle = ((extra + align) % (2*Math.PI) + 2*Math.PI) % (2*Math.PI) + extra; // 正の大角
 
   // 等減速パラメータ決定（T, ω0, α）
-  const {T, omega0, alpha} = kinematics(totalAngle);
+  const {T/4, omega0, alpha} = kinematics(totalAngle);
 
   // 初期化（毎回0から描画し直す）
   renderAngle(0);

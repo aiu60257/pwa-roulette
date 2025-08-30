@@ -305,7 +305,7 @@ function spinOnce(){
       resultEl.textContent = `結果：${labels[winIdx]}`;
       //testtest
       const li = document.createElement("li");
-      li.textContent = `結果: ${result}`;
+      li.textContent = `結果: ${resultEl}`;
       historyList.insertBefore(li, historyList.firstChild);
       //testtest
       // 次回に備えて角度をリセット（見た目は静止0°）

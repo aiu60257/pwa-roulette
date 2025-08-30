@@ -229,7 +229,7 @@ function pickStopPositionInSegment(idx){
 }
 
 // ③ 回転数（50～100回）整数
-function decideRotations(){ return Math.floor(50 + Math.random()*51); } // 50..100
+function decideRotations(){ return Math.floor(20 + Math.random()*11); } // 50..100
 
 // ④ 停止までの総角度と時間（等減速：ω(t)=ω0+αt, θ(t)=ω0 t + 1/2 α t^2, t∈[0,T], ω(T)=0）を逆算
 function kinematics(totalAngle){
@@ -295,7 +295,7 @@ function spinOnce(){
       spinning = false;
       resultEl.textContent = `結果：${labels[winIdx]}`;
       // 次回に備えて角度をリセット（見た目は静止0°）
-      setTimeout(()=>{ renderAngle(0); }, 30);
+      //setTimeout(()=>{ renderAngle(0); }, 30);
     }
   }
   requestAnimationFrame(frame);

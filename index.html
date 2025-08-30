@@ -237,9 +237,9 @@ function kinematics(totalAngle){
   // θ = ω0*T/2 かつ ω0 = -αT → α = -2θ/T^2
   // ここでは T を θ に応じて決める（最低4s, 最大8s）
   const turns = totalAngle / (2*Math.PI);
-  //const T = clamp(4 + (turns-50)*(8-4)/(100-50), 4, 8); // 50回転→4s, 100回転→8s
+  const T = clamp(4 + (turns-50)*(8-4)/(100-50), 4, 8); // 50回転→4s, 100回転→8s
   //const T = clamp(8 + (turns-50)*(12-8)/(100-50), 8, 12);
-  const T = clamp(1 + (turns-50)*(2-1)/(100-50), 1, 2);
+  //const T = clamp(1 + (turns-50)*(2-1)/(100-50), 1, 2);
   const omega0 = 2*totalAngle / T;      // 初期角速度（>0, 右回転）
   const alpha  = -2*totalAngle / (T*T); // 負の角加速度（等減速）
   return {T, omega0, alpha};

@@ -1,116 +1,312 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>ルーレット</title>
-  <style>
-    body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      background: #f0f0f0;
-      margin: 0;
-    }
-    canvas {
-      background: white;
-      border-radius: 50%;
-      box-shadow: 0 0 10px rgba(0,0,0,0.2);
-    }
-    #indicator {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -170px);
-      font-size: 2rem;
-    }
-    button {
-      margin-top: 20px;
-      padding: 10px 20px;
-      font-size: 16px;
-      border-radius: 8px;
-      border: none;
-      background: #007bff;
-      color: white;
-      cursor: pointer;
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ルーレット（0から定義・自然減速版）</title>
+<style>
+  :root { --size: 320px; }
+  body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial;
+       color:#222; margin:16px; text-align:center;}
+  h1{font-size:18px; margin:6px 0 12px;}
+  .stage{position:relative; width:var(--size); margin:0 auto 10px;}
+  canvas{display:block; width:var(--size); height:var(--size);}
+  /* インジケータ ▼（真上・接線） */
+  #indicator{position:absolute; left:50%; top:-4px; transform:translateX(-50%);
+             font-size:26px; line-height:1; user-select:none; pointer-events:none}
+  #result{margin-top:8px; font-weight:700;}
+  .form{max-width:520px; margin:10px auto; text-align:left}
+  .form label{display:block; font-size:12px; color:#555; margin:6px 0 4px}
+  .form input[type="number"], .form input[type="text"]{
+    width:100%; box-sizing:border-box; padding:10px; border:1px solid #ccc; border-radius:10px;
+  }
+  .ctrls{display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin:10px 0;}
+  .btn{padding:10px 14px; border:0; border-radius:10px; background:#0a84ff; color:#fff; font-weight:700;}
+  .btn.alt{background:#666;}
+  /* 左下の透明ボタン（管理者用） */
+  #adminHotspot{position:fixed; left:0; bottom:0; width:46px; height:46px; background:#000; opacity:0; border:0;}
+  /* 管理パネル（本当の確率） */
+  #admin{position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:16px; background:rgba(0,0,0,.5);}
+  #admin .card{background:#fff; border-radius:14px; max-width:520px; width:100%; padding:14px;}
+  #admin h3{margin:4px 0 10px;}
+  #realGrid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  #realGrid input{padding:8px; border:1px solid #ccc; border-radius:8px; width:100%;}
+  small{color:#888}
+</style>
 </head>
 <body>
-  <div id="indicator">▼</div>
-  <canvas id="wheel" width="400" height="400"></canvas>
-  <button onclick="spin()">スタート</button>
-  <p id="result"></p>
+  <h1>ルーレット</h1>
 
-  <script>
-    // ===== 可変式設定 =====
-    let segments = [
-      "A","B","C","D","E","F","G","H","I","J"
-    ]; // ← ここを編集するだけで分割数や文字を変更可能
+  <div class="stage">
+    <div id="indicator">▼</div>
+    <canvas id="wheel" width="320" height="320" aria-label="roulette"></canvas>
+  </div>
 
-    const canvas = document.getElementById("wheel");
-    const ctx = canvas.getContext("2d");
-    const resultText = document.getElementById("result");
-    let startAngle = 0;
+  <div class="ctrls">
+    <button id="spinBtn" class="btn">回す</button>
+  </div>
+  <div id="result">結果：—</div>
 
-    function drawWheel() {
-      let arc = 2 * Math.PI / segments.length;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      for (let i = 0; i < segments.length; i++) {
-        let angle = startAngle + i * arc;
-        ctx.beginPath();
-        ctx.fillStyle = i % 2 === 0 ? "#f8b400" : "#f85f73";
-        ctx.moveTo(200, 200);
-        ctx.arc(200, 200, 200, angle, angle + arc);
-        ctx.closePath();
-        ctx.fill();
+  <!-- 表向き設定（常時表示：分割数・項目名。表確率は常に均一） -->
+  <div class="form">
+    <label>分割数（2〜16）</label>
+    <input id="segInput" type="number" min="2" max="16" value="4" />
+    <label>項目名（カンマ区切り）：例）A,B,C,D</label>
+    <input id="labelInput" type="text" value="A,B,C,D" />
+    <div class="ctrls">
+      <button id="applyBtn" class="btn alt">決定（描き換え）</button>
+    </div>
+    <small>※表向きの確率は常に 1 / 分割数 で均一に描画・判定します。</small>
+  </div>
 
-        // テキスト
-        ctx.save();
-        ctx.translate(200, 200);
-        ctx.rotate(angle + arc / 2);
-        ctx.textAlign = "right";
-        ctx.fillStyle = "black";
-        ctx.font = "16px sans-serif";
-        ctx.fillText(segments[i], 180, 5);
-        ctx.restore();
-      }
+  <!-- 管理UI（本当の確率） -->
+  <button id="adminHotspot" title="admin"></button>
+  <div id="admin">
+    <div class="card">
+      <h3>本当の確率（%）を設定（合計は自動で正規化・内部計算のみ使用）</h3>
+      <div id="realGrid"></div>
+      <div class="ctrls">
+        <button id="saveReal" class="btn">決定（反映して隠す）</button>
+        <button id="cancelReal" class="btn alt">閉じる</button>
+      </div>
+      <small>例：A=60, B=10, C=10, D=20 など。設定後は左下の透明ボタンで再表示できます。</small>
+    </div>
+  </div>
+
+<script>
+/* ========= 状態 ========= */
+const canvas = document.getElementById('wheel');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height, R = Math.min(W,H)/2 - 8;
+
+const segInput = document.getElementById('segInput');
+const labelInput = document.getElementById('labelInput');
+const applyBtn  = document.getElementById('applyBtn');
+const spinBtn   = document.getElementById('spinBtn');
+const resultEl  = document.getElementById('result');
+
+const admin     = document.getElementById('admin');
+const adminHot  = document.getElementById('adminHotspot');
+const realGrid  = document.getElementById('realGrid');
+const saveReal  = document.getElementById('saveReal');
+const cancelReal= document.getElementById('cancelReal');
+
+let labels = ['A','B','C','D'];    // 表示・描画用（均等分割）
+let realProbs = [60,10,10,20];     // 本当の確率（内部抽選用・可変）
+let usingReal = true;              // 常に本当の確率で内部抽選（仕様通り）
+let currentAngle = 0;              // 表示回転角（毎回初期化）
+let spinning = false;
+
+/* ========= ユーティリティ ========= */
+function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
+function parseLabels(str, n){
+  const arr = str.split(',').map(s=>s.trim()).filter(Boolean);
+  const out = [];
+  for(let i=0;i<n;i++) out.push(arr[i] ?? `項目${i+1}`);
+  return out;
+}
+function normalize(arr){
+  const sum = arr.reduce((a,b)=>a+(+b>0?+b:0),0) || 1;
+  return arr.map(v => Math.max(0,+v||0) / sum);
+}
+
+/* ========= 描画（表向きは常に均等） ========= */
+function drawWheel(angleRad=0){
+  ctx.clearRect(0,0,W,H);
+  const n = labels.length;
+  const slice = 2*Math.PI / n;
+
+  // 回転（右回転＝正角度）
+  ctx.save();
+  ctx.translate(W/2,H/2);
+  ctx.rotate(angleRad);
+  ctx.translate(-W/2,-H/2);
+
+  for(let i=0;i<n;i++){
+    const a0 = i*slice, a1 = (i+1)*slice;
+    ctx.beginPath();
+    ctx.moveTo(W/2,H/2);
+    ctx.arc(W/2,H/2,R,a0,a1);
+    ctx.closePath();
+    ctx.fillStyle = `hsl(${(i*89)%360},72%,62%)`;
+    ctx.fill();
+    ctx.strokeStyle='#333'; ctx.stroke();
+
+    // ラベル
+    ctx.save();
+    ctx.translate(W/2,H/2);
+    ctx.rotate(a0 + slice/2);
+    ctx.textAlign='right';
+    ctx.fillStyle='#111';
+    ctx.font='14px -apple-system, sans-serif';
+    ctx.fillText(labels[i], R-14, 5);
+    ctx.restore();
+  }
+  ctx.restore();
+  // インジケータ(▼)はDOMで真上固定
+}
+
+/* ========= 設定反映（分割数・項目名） ========= */
+function applyVisibleSettings(){
+  const n = clamp(+segInput.value||4, 2, 16);
+  segInput.value = n;
+  labels = parseLabels(labelInput.value, n);
+
+  // realProbs の長さを分割数に合わせる（不足は前の値 or 0）
+  if(realProbs.length < n){
+    const last = realProbs[realProbs.length-1] ?? 0;
+    while(realProbs.length<n) realProbs.push(last);
+  }else if(realProbs.length > n){
+    realProbs = realProbs.slice(0,n);
+  }
+
+  drawWheel(0);
+  currentAngle = 0;
+  resultEl.textContent = '結果：—';
+}
+applyBtn.addEventListener('click', applyVisibleSettings);
+
+/* ========= 管理UI（本当の確率） ========= */
+function openAdminWithPassword(){
+  const pw = prompt('パスワードを入力してください');
+  if(pw !== '8888') return;
+  renderRealGrid();
+  admin.style.display='flex';
+}
+function renderRealGrid(){
+  realGrid.innerHTML='';
+  for(let i=0;i<labels.length;i++){
+    const name = document.createElement('div');
+    name.textContent = labels[i];
+    name.style.alignSelf='center';
+    const inp = document.createElement('input');
+    inp.type='number'; inp.min='0'; inp.step='0.01'; inp.value = realProbs[i] ?? 0;
+    inp.dataset.idx = i;
+    realGrid.appendChild(name);
+    realGrid.appendChild(inp);
+  }
+}
+adminHot.addEventListener('click', openAdminWithPassword);
+cancelReal.addEventListener('click', ()=> admin.style.display='none');
+saveReal.addEventListener('click', ()=>{
+  const vals = Array.from(realGrid.querySelectorAll('input')).map(i=>+i.value||0);
+  realProbs = vals;
+  admin.style.display='none'; // 反映して隠す
+});
+
+/* ========= フローチャート通りの抽選・回転 ========= */
+/*
+『定義』
+- 1回転で停止座標は 0..999 を1周
+- 分割数 n のとき、各セグメントは floor(1000/n) 幅（最後は端数を吸収）
+- 表向きは常に均一（1/n）で描画・判定基準も均等分割
+- 内部抽選は realProbs（正規化）を使用
+*/
+
+// 停止座標レンジ（均等・表向き）
+function segmentStopsRange(n, idx){
+  const base = Math.floor(1000 / n);
+  const start = idx * base;
+  let end = (idx+1)*base - 1;
+  if(idx === n-1) end = 999; // 端数を最後に寄せる
+  return [start, end];
+}
+
+// ① 本当の確率で内部当選
+function internalDrawIndex(){
+  const p = normalize(realProbs);
+  let r = Math.random(), acc = 0;
+  for(let i=0;i<p.length;i++){ acc += p[i]; if(r <= acc) return i; }
+  return p.length-1;
+}
+
+// ② 当選セグメント内で停止位置（0..999）を一様選択
+function pickStopPositionInSegment(idx){
+  const n = labels.length;
+  const [s,e] = segmentStopsRange(n, idx);
+  const pos = Math.floor(s + Math.random()*(e - s + 1));
+  return {pos, range:[s,e]};
+}
+
+// ③ 回転数（50～100回）整数
+function decideRotations(){ return Math.floor(50 + Math.random()*51); } // 50..100
+
+// ④ 停止までの総角度と時間（等減速：ω(t)=ω0+αt, θ(t)=ω0 t + 1/2 α t^2, t∈[0,T], ω(T)=0）を逆算
+function kinematics(totalAngle){
+  // 回転数が多いほど少し長く：T = 4.0 ～ 8.0 秒あたりでスケーリング
+  // θ = ω0*T/2 かつ ω0 = -αT → α = -2θ/T^2
+  // ここでは T を θ に応じて決める（最低4s, 最大8s）
+  const turns = totalAngle / (2*Math.PI);
+  const T = clamp(4 + (turns-50)*(8-4)/(100-50), 4, 8); // 50回転→4s, 100回転→8s
+  const omega0 = 2*totalAngle / T;      // 初期角速度（>0, 右回転）
+  const alpha  = -2*totalAngle / (T*T); // 負の角加速度（等減速）
+  return {T, omega0, alpha};
+}
+
+// 角度→描画
+function renderAngle(a){
+  currentAngle = a % (2*Math.PI);
+  drawWheel(currentAngle);
+}
+
+// スピン（⑤～⑦）
+function spinOnce(){
+  if(spinning) return;
+  spinning = true;
+  resultEl.textContent = '回転中…';
+
+  const n = labels.length;
+
+  // ① 内部当選
+  const winIdx = internalDrawIndex();
+
+  // ② 当選セグメント内の停止座標（0..999 一様）
+  const {pos: stopPos, range:[segS, segE]} = pickStopPositionInSegment(winIdx);
+
+  // ③ 回転数（50～100回）
+  const rotations = decideRotations();
+
+  // ④ 総停止角（右回転）
+  // 1周＝1000座標＝2π。wheel上の stopPos の角度 θ_pos だけを「真上(3π/2)」に合わせる。
+  const thetaPos = (stopPos / 1000) * 2*Math.PI;    // 0..2π
+  const align = (3*Math.PI/2 - thetaPos);           // 真上に持ってくる補正
+  // 追加回転分（50～100回）
+  const extra = rotations * 2*Math.PI;
+  const totalAngle = ((extra + align) % (2*Math.PI) + 2*Math.PI) % (2*Math.PI) + extra; // 正の大角
+
+  // 等減速パラメータ決定（T, ω0, α）
+  const {T, omega0, alpha} = kinematics(totalAngle);
+
+  // 初期化（毎回0から描画し直す）
+  renderAngle(0);
+
+  // ⑤ 回転開始（等減速）
+  const t0 = performance.now();
+  function frame(now){
+    const t = Math.min((now - t0)/1000, T); // 秒
+    const theta = omega0 * t + 0.5 * alpha * t * t; // 等減速角
+    renderAngle(theta);
+
+    if(t < T){
+      requestAnimationFrame(frame);
+    }else{
+      // ⑥ 停止 → ⑦ 結果表示
+      renderAngle(totalAngle);
+      spinning = false;
+      resultEl.textContent = `結果：${labels[winIdx]}`;
+      // 次回に備えて角度をリセット（見た目は静止0°）
+      setTimeout(()=>{ renderAngle(0); }, 30);
     }
+  }
+  requestAnimationFrame(frame);
+}
 
-    function spin() {
-      let arc = 2 * Math.PI / segments.length;
-      let spins = Math.floor(Math.random() * 3) + 4; // 最低4回転
-      let chosenIndex = Math.floor(Math.random() * segments.length);
-      
-      // 停止角度を「セグメント内のランダム位置」に
-      let stopAngle = chosenIndex * arc + (Math.random() * arc);
-      let targetAngle = (spins * 2 * Math.PI) - stopAngle;
+/* ========= イベント ========= */
+spinBtn.addEventListener('click', spinOnce);
+applyBtn.addEventListener('click', applyVisibleSettings);
+adminHot.addEventListener('touchstart', e=>{ /* 誤タップ防止に長押しでも良い */ }, {passive:true});
 
-      let duration = 4000; // 4秒
-      let start = null;
-
-      function animate(timestamp) {
-        if (!start) start = timestamp;
-        let progress = (timestamp - start) / duration;
-
-        if (progress < 1) {
-          // easeOutCubic
-          let eased = 1 - Math.pow(1 - progress, 3);
-          startAngle = targetAngle * eased;
-          drawWheel();
-          requestAnimationFrame(animate);
-        } else {
-          // 完全停止
-          startAngle = targetAngle;
-          drawWheel();
-          resultText.textContent = "結果: " + segments[chosenIndex];
-        }
-      }
-      requestAnimationFrame(animate);
-    }
-
-    drawWheel();
-  </script>
+applyVisibleSettings(); // 初期描画
+</script>
 </body>
 </html>

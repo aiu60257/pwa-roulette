@@ -95,8 +95,10 @@ const realGrid  = document.getElementById('realGrid');
 const saveReal  = document.getElementById('saveReal');
 const cancelReal= document.getElementById('cancelReal');
 
-let labels = ['A','B','C','D'];    // 表示・描画用（均等分割）
-let realProbs = [60,10,10,20];     // 本当の確率（内部抽選用・可変）
+//let labels = ['A','B','C','D'];    // 表示・描画用（均等分割）
+//let realProbs = [60,10,10,20];     // 本当の確率（内部抽選用・可変）
+let labels = ['A','B','C','D','E','F','G','H','I','アタリさん'];    // 表示・描画用（均等分割）
+let realProbs = [10,10,10,10,10,10,10,10,10,90];     // 本当の確率（内部抽選用・可変）
 let usingReal = true;              // 常に本当の確率で内部抽選（仕様通り）
 let currentAngle = 0;              // 表示回転角（毎回初期化）
 let spinning = false;

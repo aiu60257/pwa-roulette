@@ -238,7 +238,8 @@ function kinematics(totalAngle){
   // ここでは T を θ に応じて決める（最低4s, 最大8s）
   const turns = totalAngle / (2*Math.PI);
   //const T = clamp(4 + (turns-50)*(8-4)/(100-50), 4, 8); // 50回転→4s, 100回転→8s
-  const T = clamp(8 + (turns-50)*(12-8)/(100-50), 8, 12);
+  //const T = clamp(8 + (turns-50)*(12-8)/(100-50), 8, 12);
+  T = 1
   const omega0 = 2*totalAngle / T;      // 初期角速度（>0, 右回転）
   const alpha  = -2*totalAngle / (T*T); // 負の角加速度（等減速）
   return {T, omega0, alpha};
@@ -274,6 +275,9 @@ function spinOnce(){
     entry.textContent = result;
     historyDiv.appendChild(entry);
   }
+  //testtest
+  //testtest
+  addHistory("結果: " + resultText); 
   //testtest
   // ① 内部当選
   const winIdx = internalDrawIndex();
@@ -312,9 +316,7 @@ function spinOnce(){
       renderAngle(totalAngle);
       spinning = false;
       resultEl.textContent = `結果：${labels[winIdx]}`;
-      //testtest
-      addHistory("結果: " + resultText); 
-      //testtest
+      
       // 次回に備えて角度をリセット（見た目は静止0°）
       //setTimeout(()=>{ renderAngle(0); }, 30);
     }

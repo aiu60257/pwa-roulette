@@ -306,27 +306,7 @@ function spinOnce(){
 
   requestAnimationFrame(frame);
 }
-  //testtest
-  addHistory("結果: " + resultText); 
-  //testtest
-  //testtest
-  // 履歴表示用のdivを生成（HTMLに書いてもOK）
-  const historyDiv = document.createElement("div");
-  historyDiv.id = "history";
-  historyDiv.style.marginTop = "20px";
-  historyDiv.style.padding = "10px";
-  historyDiv.style.border = "1px solid #ccc";
-  historyDiv.style.borderRadius = "8px";
-  historyDiv.innerHTML = "<h3>履歴</h3>";
-  document.body.appendChild(historyDiv);
-  
-  // 履歴を更新する関数
-  function addHistory(result) {
-    const entry = document.createElement("div");
-    entry.textContent = result;
-    historyDiv.appendChild(entry);
-  }
-  //testtest
+
 /* ========= イベント ========= */
 spinBtn.addEventListener('click', spinOnce);
 applyBtn.addEventListener('click', applyVisibleSettings);

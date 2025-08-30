@@ -72,6 +72,10 @@
       <small>例：A=60, B=10, C=10, D=20 など。設定後は左下の透明ボタンで再表示できます。</small>
     </div>
   </div>
+  <div id="history">
+    <h2>履歴</h2>
+    <ul id="historyList"></ul>
+  </div>
 
 <script>
 /* ========= 状態 ========= */
@@ -268,7 +272,9 @@ function spinOnce(){
 
   // ③ 回転数（50～100回）
   const rotations = decideRotations();
-
+  //testtest
+  const historyList = document.getElementById("historyList");
+  //testtest
   // ④ 総停止角（右回転）
   // 1周＝1000座標＝2π。wheel上の stopPos の角度 θ_pos だけを「真上(3π/2)」に合わせる。
   const thetaPos = (stopPos / 1000) * 2*Math.PI;    // 0..2π
@@ -297,7 +303,11 @@ function spinOnce(){
       renderAngle(totalAngle);
       spinning = false;
       resultEl.textContent = `結果：${labels[winIdx]}`;
-      
+      //testtest
+      const li = document.createElement("li");
+      li.textContent = `結果: ${result}`;
+      historyList.insertBefore(li, historyList.firstChild);
+      //testtest
       // 次回に備えて角度をリセット（見た目は静止0°）
       //setTimeout(()=>{ renderAngle(0); }, 30);
     }
